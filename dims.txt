@@ -1,0 +1,526 @@
+TABLES : 
+
+1.generic_drug : 
+
+create table generic_drug
+(
+	id int primary key,
+	name varchar(100),
+	subclass_id int	
+);
+
+2.indication : 
+
+create table indication
+(
+	id int primary key,
+	name varchar(100)
+);
+
+
+3.company : 
+
+create table company
+(
+	id int primary key,
+	name varchar(100),
+                income_from_selling float default 0
+);
+
+
+4.drug_class : 
+
+create table drug_class
+(
+ 	id int primary key,
+	name varchar(100)
+	
+);
+
+
+5.drug_subclass :
+
+create table drug_subclass
+(
+	id int primary key,
+	drug_class_id int,
+	name varchar(100)
+);
+
+6.medicine :
+
+create table medicine
+(
+	id int primary key,
+	name varchar(100),
+	medicine_type varchar(100),
+	generic_id int REFERENCES generic_drug(id),
+	weight varchar(100),
+	company_id int REFERENCES company(id)
+);
+ 
+
+7.description :
+ 
+create table description
+(
+	medicine_id int references medicine(id),
+	adult_dose varchar(1000),
+	child_dose varchar(1000),
+	renal_dose varchar(1000),
+	side_effects varchar(1000),
+	precautions_and_warnings varchar(1000),
+	pack_size varchar(1000),
+                unit_price float
+		
+);
+
+ 
+8.cures :
+
+create table cures
+(
+	generic_id int references generic_drug(id),
+	indication_id int references indication(id) 
+);
+
+
+9.pharmacy : 
+
+create table pharmacy
+(
+	id serial primary key,
+	name varchar(50),
+	pass varchar(50),
+	longitude real,
+	latitude real,
+                income_from_selling float default 0
+                
+);
+
+10. client : 
+
+create table client
+(
+	id serial primary key,
+	name varchar(50),
+	pass varchar(50),
+	contact varchar(50)
+);
+
+11. buy :
+
+create table buy
+(
+	id serial primary key,
+	cid int references client(id),
+	phid int references pharmacy(id),
+	buy_date date
+);
+
+12. buy_medicine :
+
+create table buy_medicine
+(
+	buy_id int references buy(id),
+	med_id int references medicine(id),
+	amount int	
+);
+
+13.purchase :
+
+create table purchase
+(
+	id serial primary key,
+	phid int references pharmacy(id),
+	com_id int references company(id),
+                purchase_date date	
+);
+
+14. purchase_medicine :
+
+create table purchase_medicine
+(
+	purchase_id int references purchase(id),
+	med_id int references medicine(id),
+	amount int
+);
+
+15.stores :
+
+create table stores
+(
+	ph_id int references pharmacy(id),
+	med_id int references medicine(id),
+	amount int 
+);
+
+16.med_src_cnt : 
+
+create table med_src_cnt
+(
+	id int references medicine(id),
+	cnt int default 0
+
+);
+
+17.indication_src_cnt :
+
+create table indication_src_cnt
+(
+	id int references indication(id),
+	cnt int default 0
+
+);
+
+18.answers : 
+
+create table answers
+(
+	name varchar(100)
+);
+
+--------------------------------------------------------------------------------------------------------------------------------------
+ 
+
+
+FUNCTIONS : 
+
+1.
+
+CREATE OR REPLACE FUNCTION set_up_client_buy(mid int,pid int,quantity int)
+RETURNS TEXT AS
+$$
+DECLARE
+c int;
+BEGIN
+
+c := 0;
+
+select count(*) into c
+from stores 
+where ph_id = pid and med_id = mid;
+
+if c = 0 then
+	return 'OUT OF STOCK';
+end if; 
+
+select amount into c
+from stores 
+where ph_id = pid and med_id = mid;
+
+if c < quantity then
+	return 'OUT OF STOCK';
+end if;
+
+update stores
+set amount  = amount - quantity
+where ph_id = pid and med_id = mid;
+
+return 'SUCCESSFUL';
+
+END;
+$$ 
+LANGUAGE PLpgSQL;
+
+
+
+2.
+
+CREATE OR REPLACE FUNCTION set_up_pharmacy_buy(mid int,pid int,quantity int)
+RETURNS TEXT AS
+$$
+DECLARE
+c int;
+BEGIN
+
+c := 0;
+
+select count(*) into c
+from stores 
+where ph_id = pid and med_id = mid;
+
+if c = 0 then
+	insert into stores values(pid,mid,quantity);
+else
+	update stores
+	set amount  = amount + quantity
+	where ph_id = pid and med_id = mid;
+	
+end if; 
+
+return 'SUCCESSFUL';
+
+END;
+$$ 
+LANGUAGE PLpgSQL;
+
+
+3.
+
+CREATE OR REPLACE FUNCTION medicine_search_report(mid int)
+RETURNS TEXT AS
+$$
+DECLARE
+c int;
+BEGIN
+
+c := 0;
+
+select count(*) into c
+from med_src_cnt 
+where id = mid;
+
+if c = 0 then
+	insert into med_src_cnt values(mid,1);
+else
+	update med_src_cnt
+	set cnt = cnt+1
+	where id = mid;
+	
+end if; 
+
+return 'SUCCESSFUL';
+
+END;
+$$ 
+LANGUAGE PLpgSQL;
+
+4.
+
+CREATE OR REPLACE FUNCTION indication_search_report(i_name Text)
+RETURNS TEXT AS
+$$
+DECLARE
+c int;
+iid int;
+BEGIN
+
+c := 0;
+
+select id into iid
+from indication
+where name = i_name;
+
+select count(*) into c
+from indication_src_cnt 
+where id = iid;
+
+if c = 0 then
+	insert into indication_src_cnt values(iid,1);
+else
+	update indication_src_cnt
+	set cnt = cnt+1
+	where id = iid;
+	
+end if;
+
+return 'SUCCESSFUL';
+
+END;
+$$ 
+LANGUAGE PLpgSQL;
+
+5.
+
+CREATE OR REPLACE FUNCTION fix_client_buy(uid int,pid int,mid int,quantity int)
+RETURNS TABLE(RES TEXT) AS 
+$$
+DECLARE
+MSG TEXT;
+last_id int;
+BEGIN
+
+MSG := set_up_client_buy(mid,pid,quantity);
+
+if(MSG = 'SUCCESSFUL') THEN
+	insert into buy(cid,phid,buy_date) values(uid,pid,current_date);
+	select MAX(id) into last_id from buy;
+	insert into buy_medicine values(last_id,mid,quantity);
+	RETURN QUERY SELECT NAME FROM ANSWERS WHERE NAME = 'SUCCESSFUL';
+else
+    RETURN QUERY SELECT NAME FROM ANSWERS WHERE NAME = 'UNSUCCESSFUL';
+end if; 
+
+END;
+$$ 
+LANGUAGE PLpgSQL;
+
+
+6.
+
+
+CREATE OR REPLACE FUNCTION fix_pharmacy_buy(pid int,cid int,mid int,quantity int)
+RETURNS TABLE(RES TEXT) AS 
+$$
+DECLARE
+last_id int;
+MSG TEXT;
+BEGIN
+
+MSG := set_up_pharmacy_buy(mid,pid,quantity);
+
+insert into purchase(phid,com_id,purchase_date) values(pid,cid,current_date);
+select MAX(id) into last_id from purchase;
+insert into purchase_medicine values(last_id,mid,quantity);
+RETURN QUERY SELECT NAME FROM ANSWERS WHERE NAME = 'SUCCESSFUL';
+  
+
+END;
+$$ 
+LANGUAGE PLpgSQL;
+
+
+
+
+7.
+
+CREATE OR REPLACE FUNCTION get_nearest_pharmacy(i_longitude real,i_latitude real,m_id int,quantity int) 
+RETURNS TABLE(id int,dist real) AS $$
+DECLARE 
+BEGIN
+RETURN QUERY (
+  
+	 select pp.id,sqrt(((i_longitude - pp.longitude)*(i_longitude - pp.longitude)) +
+									((i_latitude - pp.latitude)*(i_latitude - pp.latitude)))
+     from stores ss join pharmacy pp on ss.ph_id = pp.id
+     where ss.med_id = m_id and ss.amount >= quantity
+);
+END; $$ 
+LANGUAGE 'plpgsql';
+
+ 
+8.
+
+CREATE OR REPLACE FUNCTION fix_client_sell(p_id int,c_id int,m_id int,quantity int)
+RETURNS TABLE(RES TEXT) AS 
+$$
+DECLARE
+MSG TEXT;
+last_id int;
+BEGIN
+
+MSG := set_up_client_buy(m_id,p_id,quantity);
+
+if(MSG = 'SUCCESSFUL') THEN
+	insert into buy(cid,phid,buy_date) values(c_id,p_id,current_date);
+	select MAX(id) into last_id from buy;
+	insert into buy_medicine values(last_id,m_id,quantity);
+	RETURN QUERY SELECT NAME FROM ANSWERS WHERE NAME = 'SUCCESSFUL';
+else
+    RETURN QUERY SELECT NAME FROM ANSWERS WHERE NAME = 'UNSUCCESSFUL';
+end if; 
+
+END;
+$$ 
+LANGUAGE PLpgSQL;
+ 
+
+
+-----------------------------------------------------------------------------------------------------------------------------------------------
+ 
+TRIGGER : 
+
+  1. set_company_income :
+
+ CREATE OR REPLACE FUNCTION set_company_income() RETURNS TRIGGER AS 
+ $$
+   DECLARE
+   purchase_id int;
+   c_id int;
+   quant int;
+   u_price float;
+   BEGIN
+
+   purchase_id := new.purchase_id;
+   quant := new.amount;
+  
+   select unit_price into u_price
+   from description
+   where medicine_id = new.med_id;
+   
+
+   select com_id into c_id
+   from purchase
+   where id = purchase_id;
+
+  update company
+  set  income_from_selling =  income_from_selling + (u_price*quant)
+  where id = c_id;
+  
+   RETURN NEW;
+  
+   END;
+$$
+ LANGUAGE plpgsql;
+
+
+CREATE TRIGGER company_income_trigger AFTER INSERT ON purchase_medicine
+FOR EACH ROW EXECUTE PROCEDURE set_pharmacy_income();
+
+2.set_pharmacy_income : 
+
+insert into buy(cid,phid,buy_date) values(c_id,p_id,current_date);
+	select MAX(id) into last_id from buy;
+	insert into buy_medicine values(last_id,m_id,quantity);
+
+CREATE OR REPLACE FUNCTION set_pharmacy_income() RETURNS TRIGGER AS 
+ $$
+   DECLARE
+   buy_id int;
+   ph_id int;
+   quant int;
+   u_price float;
+   BEGIN
+
+   buy_id := new.buy_id;
+   quant := new.amount;
+  
+   select unit_price into u_price
+   from description
+   where medicine_id = new.med_id;
+   
+
+   select phid into ph_id
+   from buy
+   where id = buy_id;
+
+  update pharmacy
+  set  income_from_selling =  income_from_selling + (u_price*quant)
+  where id = ph_id;
+  
+   RETURN NEW;
+  
+   END;
+$$
+ LANGUAGE plpgsql;
+
+
+CREATE TRIGGER pharmacy_income_trigger AFTER INSERT ON buy_medicine
+FOR EACH ROW EXECUTE PROCEDURE set_pharmacy_income();
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

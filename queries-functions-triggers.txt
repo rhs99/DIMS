@@ -180,10 +180,10 @@ create table answers
 	name varchar(100)
 );
 
+
+
+
 --------------------------------------------------------------------------------------------------------------------------------------
- 
-
-
 FUNCTIONS : 
 
 1.
@@ -286,6 +286,7 @@ END;
 $$ 
 LANGUAGE PLpgSQL;
 
+
 4.
 
 CREATE OR REPLACE FUNCTION indication_search_report(i_name Text)
@@ -349,7 +350,6 @@ LANGUAGE PLpgSQL;
 
 6.
 
-
 CREATE OR REPLACE FUNCTION fix_pharmacy_buy(pid int,cid int,mid int,quantity int)
 RETURNS TABLE(RES TEXT) AS 
 $$
@@ -369,8 +369,6 @@ RETURN QUERY SELECT NAME FROM ANSWERS WHERE NAME = 'SUCCESSFUL';
 END;
 $$ 
 LANGUAGE PLpgSQL;
-
-
 
 
 7.
@@ -417,14 +415,13 @@ LANGUAGE PLpgSQL;
  
 
 
------------------------------------------------------------------------------------------------------------------------------------------------
- 
+------------------------------------------------------------------------------------------------------------------------------
 TRIGGER : 
 
-  1. set_company_income :
+1. set_company_income :
 
- CREATE OR REPLACE FUNCTION set_company_income() RETURNS TRIGGER AS 
- $$
+CREATE OR REPLACE FUNCTION set_company_income() RETURNS TRIGGER AS 
+$$
    DECLARE
    purchase_id int;
    c_id int;
@@ -434,7 +431,7 @@ TRIGGER :
 
    purchase_id := new.purchase_id;
    quant := new.amount;
-  
+   
    select unit_price into u_price
    from description
    where medicine_id = new.med_id;
@@ -448,15 +445,15 @@ TRIGGER :
   set  income_from_selling =  income_from_selling + (u_price*quant)
   where id = c_id;
   
-   RETURN NEW;
-  
-   END;
+RETURN NEW;  
+END;
 $$
- LANGUAGE plpgsql;
+LANGUAGE plpgsql;
 
 
 CREATE TRIGGER company_income_trigger AFTER INSERT ON purchase_medicine
-FOR EACH ROW EXECUTE PROCEDURE set_pharmacy_income();
+FOR EACH ROW EXECUTE PROCEDURE set_company_income();
+
 
 2.set_pharmacy_income : 
 
@@ -489,38 +486,12 @@ CREATE OR REPLACE FUNCTION set_pharmacy_income() RETURNS TRIGGER AS
   set  income_from_selling =  income_from_selling + (u_price*quant)
   where id = ph_id;
   
-   RETURN NEW;
+  RETURN NEW;
   
-   END;
+END;
 $$
- LANGUAGE plpgsql;
+LANGUAGE plpgsql;
 
 
 CREATE TRIGGER pharmacy_income_trigger AFTER INSERT ON buy_medicine
 FOR EACH ROW EXECUTE PROCEDURE set_pharmacy_income();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
